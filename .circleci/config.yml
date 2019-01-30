@@ -3,6 +3,7 @@ jobs:
   build:
     working_directory: /go/src/github.com/oneconcern/keycloak-gatekeeper
     docker:
+      # This is a debian strech image (todo: use alpine builder)
       - image: circleci/golang:latest
     steps:
       - checkout
