@@ -109,12 +109,34 @@ func (r *oauthProxy) createReverseProxy() error {
 		}
 	}
 
+	// step: define expected behaviour on default route: "/*"
 	if addDefaultDeny {
-		r.log.Info("adding a default denial to protected resources: all routes to upstream require authentication")
-		r.config.Resources = append(r.config.Resources, &Resource{URL: allRoutes, Methods: allHTTPMethods})
+		if r.config.EnableDefaultNotFound {
+			r.log.Info("routes which are not explicitly declared as resources will respond 401 not authenticated or 404 NotFound for authenticated users")
+			engine.With(r.authenticationMiddleware()).
+				Handle(allRoutes, chi.NewMux().NotFoundHandler())
+		} else {
+			r.log.Info("adding a default denial to protected resources: all routes to upstream require authentication")
+			r.config.Resources = append(r.config.Resources, &Resource{URL: allRoutes, Methods: allHTTPMethods})
+		}
 	} else {
-		r.log.Info("routes to upstream are not configured to be denied by default")
-		engine.With(r.proxyMiddleware(nil)).HandleFunc(allRoutes, emptyHandler)
+		if r.config.EnableDefaultNotFound {
+			// this setting kicks in only on default catch all route, not if one has been explicitly set up
+			foundAllRoutes := false
+			for _, x := range r.config.Resources {
+				if x.URL == allRoutes {
+					foundAllRoutes = true
+					break
+				}
+			}
+			if !foundAllRoutes {
+				r.log.Info("routes which are not explicitly declared as resources will respond 404 NotFound")
+				engine.Handle(allRoutes, chi.NewMux().NotFoundHandler())
+			}
+		} else {
+			r.log.Warn("routes to upstream are not configured to be denied by default")
+			engine.With(r.proxyMiddleware(nil)).HandleFunc(allRoutes, emptyHandler)
+		}
 	}
 
 	for _, x := range r.config.Resources {
