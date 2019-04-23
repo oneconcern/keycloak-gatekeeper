@@ -16,7 +16,6 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"net/http"
 	"net/url"
 	"path"
@@ -97,7 +96,7 @@ func (r *oauthProxy) createReverseProxy() error {
 		return err
 	}
 	// step: provision in the protected resources
-	enableDefaultDeny := r.config.EnableDefaultDeny
+	addDefaultDeny := r.config.EnableDefaultDeny
 	for _, x := range r.config.Resources {
 		if x.URL[len(x.URL)-1:] == "/" {
 			r.log.Warn("the resource url is not a prefix",
@@ -105,23 +104,17 @@ func (r *oauthProxy) createReverseProxy() error {
 				zap.String("change", x.URL),
 				zap.String("amended", strings.TrimRight(x.URL, "/")))
 		}
-		// TODO: move this to config check
-		if x.URL == "/*" && r.config.EnableDefaultDeny {
-			switch x.WhiteListed {
-			case true:
-				return errors.New("you've asked for a default denial but whitelisted everything")
-			default:
-				enableDefaultDeny = false
-			}
+		if x.URL == allRoutes && r.config.EnableDefaultDeny {
+			addDefaultDeny = false
 		}
 	}
 
-	if enableDefaultDeny {
+	if addDefaultDeny {
 		r.log.Info("adding a default denial to protected resources: all routes to upstream require authentication")
-		r.config.Resources = append(r.config.Resources, &Resource{URL: "/*", Methods: allHTTPMethods})
+		r.config.Resources = append(r.config.Resources, &Resource{URL: allRoutes, Methods: allHTTPMethods})
 	} else {
 		r.log.Info("routes to upstream are not configured to be denied by default")
-		engine.With(r.proxyMiddleware(nil)).HandleFunc("/*", emptyHandler)
+		engine.With(r.proxyMiddleware(nil)).HandleFunc(allRoutes, emptyHandler)
 	}
 
 	for _, x := range r.config.Resources {
