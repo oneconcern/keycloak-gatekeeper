@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
 	"github.com/rs/cors"
 	"go.uber.org/zap"
 )
@@ -60,68 +59,33 @@ func (r *oauthProxy) createReverseProxy() error {
 	// configure CSRF middleware
 	r.csrf = r.csrfConfigMiddleware()
 
-	// step: define admin subrouter: health and metrics
-	adminEngine := chi.NewRouter()
-	r.log.Info("enabled health service", zap.String("path", path.Clean(r.config.WithOAuthURI(healthURL))))
-	adminEngine.Get(healthURL, r.healthHandler)
-	if r.config.EnableMetrics {
-		r.log.Info("enabled the service metrics middleware", zap.String("path", path.Clean(r.config.WithOAuthURI(metricsURL))))
-		adminEngine.Get(metricsURL, r.proxyMetricsHandler)
-	}
-
-	// step: add the routing for oauth
+	// step: add the handlers for oauth
 	engine.With(
 		proxyDenyMiddleware,
 		r.csrfSkipMiddleware(), // handle CSRF state, but skip check on POST endpoints below
 		r.csrfProtectMiddleware(),
-		r.csrfHeaderMiddleware()).Route(r.config.OAuthURI, func(e chi.Router) {
-		e.MethodNotAllowed(methodNotAllowHandlder)
-		e.HandleFunc(authorizationURL, r.oauthAuthorizationHandler)
-		e.Get(callbackURL, r.oauthCallbackHandler)
-		e.Get(expiredURL, r.expirationHandler)
+		r.csrfHeaderMiddleware()).Route(r.config.OAuthURI,
+		func(e chi.Router) {
+			e.MethodNotAllowed(methodNotAllowHandlder)
 
-		e.With(r.authenticationMiddleware()).Get(logoutURL, r.logoutHandler)
-		e.With(r.authenticationMiddleware()).Get(tokenURL, r.tokenHandler)
+			e.HandleFunc(authorizationURL, r.oauthAuthorizationHandler)
+			e.Get(callbackURL, r.oauthCallbackHandler)
+			e.Get(expiredURL, r.expirationHandler)
 
-		e.Post(loginURL, r.loginHandler)
+			e.With(r.authenticationMiddleware()).Get(logoutURL, r.logoutHandler)
+			e.With(r.authenticationMiddleware()).Get(tokenURL, r.tokenHandler)
 
-		if r.config.ListenAdmin == "" {
-			e.Mount("/", adminEngine)
-		}
-	})
+			e.Post(loginURL, r.loginHandler)
 
-	// step: define profiling subrouter
-	var debugEngine chi.Router
-	if r.config.EnableProfiling {
-		r.log.Warn("enabling the debug profiling on " + debugURL)
-		debugEngine = chi.NewRouter()
-		debugEngine.Get("/{name}", r.debugHandler)
-		debugEngine.Post("/{name}", r.debugHandler)
-
-		// @check if the server write-timeout is still set and throw a warning
-		if r.config.ServerWriteTimeout > 0 {
-			r.log.Warn("you should disable the server write timeout (--server-write-timeout) when using pprof profiling")
-		}
-		if r.config.ListenAdmin == "" {
-			engine.With(proxyDenyMiddleware).Mount(debugURL, debugEngine)
-		}
-	}
-
-	if r.config.ListenAdmin != "" {
-		// mount admin and debug engines separately
-		r.log.Info("mounting admin endpoints on separate listener")
-		admin := chi.NewRouter()
-		admin.MethodNotAllowed(emptyHandler)
-		admin.NotFound(emptyHandler)
-		admin.Use(middleware.Recoverer)
-		admin.Use(proxyDenyMiddleware)
-		admin.Route("/", func(e chi.Router) {
-			e.Mount(r.config.OAuthURI, adminEngine)
-			if debugEngine != nil {
-				e.Mount(debugURL, debugEngine)
+			if r.config.ListenAdmin == "" {
+				e.Mount("/", r.createAdminRoutes())
 			}
 		})
-		r.adminRouter = admin
+
+	if r.config.ListenAdmin == "" {
+		if debugEngine := r.createDebugRoutes(); debugEngine != nil {
+			engine.With(proxyDenyMiddleware).Mount(debugURL, debugEngine)
+		}
 	}
 
 	if r.config.EnableSessionCookies {
@@ -141,6 +105,7 @@ func (r *oauthProxy) createReverseProxy() error {
 				zap.String("change", x.URL),
 				zap.String("amended", strings.TrimRight(x.URL, "/")))
 		}
+		// TODO: move this to config check
 		if x.URL == "/*" && r.config.EnableDefaultDeny {
 			switch x.WhiteListed {
 			case true:
@@ -267,7 +232,6 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 			r.log.Debug("proxying to upstream", zap.String("matched_resource", matched), zap.Stringer("upstream_url", req.URL))
 
 			// @note: by default goproxy only provides a forwarding proxy, thus all requests have to be absolute and we must update the host headers
-			// TODO(fredbi): weakness here
 			if v := req.Header.Get("Host"); v != "" {
 				req.Host = v
 				req.Header.Del("Host")
