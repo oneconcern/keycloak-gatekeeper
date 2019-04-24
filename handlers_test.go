@@ -336,7 +336,7 @@ func TestHealthHandler(t *testing.T) {
 		{
 			URI:             c.WithOAuthURI(healthURL),
 			ExpectedCode:    http.StatusOK,
-			ExpectedContent: "OK\n",
+			ExpectedContent: `{"status":"OK"}`,
 			ExpectedHeaders: map[string]string{"Content-Type": jsonMime},
 		},
 		{

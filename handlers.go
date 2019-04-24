@@ -428,6 +428,7 @@ func (r *oauthProxy) tokenHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	w.Header().Set("Content-Type", jsonMime)
 	_, _ = w.Write(user.token.Payload)
+	w.WriteHeader(http.StatusOK)
 }
 
 // healthHandler is a health check handler for the service
@@ -435,7 +436,7 @@ func (r *oauthProxy) healthHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", jsonMime)
 	w.Header().Set(versionHeader, getVersion())
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("OK\n"))
+	_, _ = w.Write([]byte(`{"status":"OK"}`))
 }
 
 // debugHandler is responsible for providing the pprof
