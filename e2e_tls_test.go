@@ -30,6 +30,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/http2"
 )
 
 const (
@@ -311,12 +312,16 @@ func TestTLSUpstream(t *testing.T) {
 	require.NotEmpty(t, accessToken)
 
 	// scenario 1: routing to upstream, w/ TLS and HTTP/2
-	client := http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs: makeTestCACertPool(),
-			},
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs:    makeTestCACertPool(),
+			NextProtos: []string{"h2", "http/1.1"},
 		},
+	}
+	err = http2.ConfigureTransport(transport)
+	require.NoError(t, err)
+	client := http.Client{
+		Transport: transport,
 	}
 
 	h := make(http.Header, 10)
@@ -339,6 +344,7 @@ func TestTLSUpstream(t *testing.T) {
 	}()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, 2, resp.ProtoMajor)
 	buf, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Contains(t, string(buf), "mark1")
