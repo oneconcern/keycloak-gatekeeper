@@ -273,9 +273,8 @@ func (r *oauthProxy) createProxy() error {
 
 	// create the forwarding proxy
 	proxy := goproxy.NewProxyHttpServer()
-	proxy.KeepDestinationHeaders = !r.config.CorsDisableUpstream
+	proxy.KeepDestinationHeaders = true
 	proxy.Logger = httplog.New(ioutil.Discard, "", 0)
-	proxy.KeepDestinationHeaders = !r.config.CorsDisableUpstream
 	r.upstream = proxy
 
 	// update the tls configuration of the reverse proxy

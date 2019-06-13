@@ -405,10 +405,6 @@ func (r *Config) isReverseProxyValid() error {
 		if !found {
 			return fmt.Errorf("flag EnableCSRF is set but no protected resource sets EnableCSRF")
 		}
-		// TODO: this option should disappear and always be left to default
-		if r.CorsDisableUpstream {
-			return fmt.Errorf("flag EnableCSRF requires headers to be added to upstream response. This won't work if CorsDisableUpstream is set")
-		}
 	}
 	return nil
 }
