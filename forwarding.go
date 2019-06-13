@@ -20,6 +20,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	httplog "log"
+	"net"
 	"net/http"
 	"time"
 
@@ -58,7 +61,7 @@ func (r *oauthProxy) createForwardingProxy() error {
 	if r.config.SkipUpstreamTLSVerify {
 		r.log.Warn("tls verification switched off. In forward signing mode it's recommended you verify! (--skip-upstream-tls-verify=false)")
 	}
-	if err := r.createUpstreamProxy(nil); err != nil {
+	if err := r.createProxy(); err != nil {
 		return err
 	}
 	forwardingHandler := r.forwardProxyHandler()
@@ -254,4 +257,38 @@ func (r *oauthProxy) forwardProxyHandler() func(*http.Request, *http.Response) {
 			req.Header.Set("X-Forwarded-Agent", prog)
 		}
 	}
+}
+
+// createProxy creates a reverse http proxy client to the upstream
+func (r *oauthProxy) createProxy() error {
+	dialer := (&net.Dialer{
+		KeepAlive: r.config.UpstreamKeepaliveTimeout,
+		Timeout:   r.config.UpstreamTimeout,
+	}).Dial
+
+	tlsConfig, err := r.buildProxyTLSConfig()
+	if err != nil {
+		return err
+	}
+
+	// create the forwarding proxy
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.KeepDestinationHeaders = !r.config.CorsDisableUpstream
+	proxy.Logger = httplog.New(ioutil.Discard, "", 0)
+	proxy.KeepDestinationHeaders = !r.config.CorsDisableUpstream
+	r.upstream = proxy
+
+	// update the tls configuration of the reverse proxy
+	r.upstream.(*goproxy.ProxyHttpServer).Tr = &http.Transport{
+		Dial:                  dialer,
+		DisableKeepAlives:     !r.config.UpstreamKeepalives,
+		ExpectContinueTimeout: r.config.UpstreamExpectContinueTimeout,
+		ResponseHeaderTimeout: r.config.UpstreamResponseHeaderTimeout,
+		TLSClientConfig:       tlsConfig,
+		TLSHandshakeTimeout:   r.config.UpstreamTLSHandshakeTimeout,
+		MaxIdleConns:          r.config.MaxIdleConns,
+		MaxIdleConnsPerHost:   r.config.MaxIdleConnsPerHost,
+	}
+
+	return nil
 }

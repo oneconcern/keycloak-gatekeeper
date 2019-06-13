@@ -16,10 +16,18 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"fmt"
+
+	//"io/ioutil"
+	//httplog "log"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+
+	"net/http/httputil"
 
 	"github.com/go-chi/chi"
 	"github.com/rs/cors"
@@ -29,7 +37,7 @@ import (
 // createReverseProxy creates a reverse proxy
 func (r *oauthProxy) createReverseProxy() error {
 	r.log.Info("enabled reverse proxy mode, default upstream url", zap.String("url", r.config.Upstream))
-	if err := r.createUpstreamProxy(r.endpoint); err != nil {
+	if err := r.createStdProxy(r.endpoint); err != nil {
 		return err
 	}
 	engine := chi.NewRouter()
@@ -179,7 +187,7 @@ func (r *oauthProxy) createReverseProxy() error {
 	return nil
 }
 
-// proxyMiddleware is responsible for handles reverse proxy request to the upstream endpoint
+// proxyMiddleware is responsible for handling reverse proxy request to the upstream endpoint
 func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http.Handler {
 	var upstreamHost, upstreamScheme, upstreamBasePath, stripBasePath, matched string
 	if resource != nil && resource.Upstream != "" {
@@ -225,6 +233,7 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 				// if CORS is enabled by gatekeeper, do not propagate CORS requests upstream
 				req.Header.Del("Origin")
 			}
+
 			// @step: add any custom headers to the request
 			for k, v := range r.config.Headers {
 				req.Header.Set(k, v)
@@ -273,4 +282,49 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 			r.upstream.ServeHTTP(w, req)
 		})
 	}
+}
+
+// createStdProxy creates a reverse http proxy client to the upstream
+// TODO: enable http2 support
+// TODO:: multiple proxies with possibly different dialers and TLS configs
+func (r *oauthProxy) createStdProxy(upstream *url.URL) error {
+	dialer := (&net.Dialer{
+		KeepAlive: r.config.UpstreamKeepaliveTimeout,
+		Timeout:   r.config.UpstreamTimeout,
+	}).DialContext
+
+	// are we using a unix socket?
+	if upstream != nil && upstream.Scheme == "unix" {
+		r.log.Info("using unix socket for upstream", zap.String("socket", fmt.Sprintf("%s%s", upstream.Host, upstream.Path)))
+
+		socketPath := fmt.Sprintf("%s%s", upstream.Host, upstream.Path)
+		dialer = func(_ context.Context, network, address string) (net.Conn, error) {
+			return net.Dial("unix", socketPath)
+		}
+		upstream.Path = ""
+		upstream.Host = "domain-sock"
+		upstream.Scheme = unsecureScheme
+	}
+
+	// create the upstream tls configuration
+	tlsConfig, err := r.buildProxyTLSConfig()
+	if err != nil {
+		return err
+	}
+
+	r.upstream = &httputil.ReverseProxy{
+		Director: func(*http.Request) {}, // most of the work is done by middleware. Some of this could be done by Director
+		Transport: &http.Transport{
+			DialContext:           dialer,
+			TLSClientConfig:       tlsConfig,
+			TLSHandshakeTimeout:   r.config.UpstreamTLSHandshakeTimeout,
+			MaxIdleConns:          r.config.MaxIdleConns,
+			MaxIdleConnsPerHost:   r.config.MaxIdleConnsPerHost,
+			DisableKeepAlives:     !r.config.UpstreamKeepalives,
+			ExpectContinueTimeout: r.config.UpstreamExpectContinueTimeout,
+			ResponseHeaderTimeout: r.config.UpstreamResponseHeaderTimeout,
+		},
+	}
+
+	return nil
 }

@@ -38,7 +38,6 @@ import (
 
 	proxyproto "github.com/armon/go-proxyproto"
 	"github.com/coreos/go-oidc/oidc"
-	"github.com/elazarl/goproxy"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/prometheus/client_golang/prometheus"
@@ -583,26 +582,7 @@ func (r *oauthProxy) Render(w io.Writer, name string, data interface{}) error {
 	return r.templates.ExecuteTemplate(w, name, data)
 }
 
-// createUpstreamProxy creates a reverse http proxy client to the upstream
-func (r *oauthProxy) createUpstreamProxy(upstream *url.URL) error {
-	dialer := (&net.Dialer{
-		KeepAlive: r.config.UpstreamKeepaliveTimeout,
-		Timeout:   r.config.UpstreamTimeout,
-	}).Dial
-
-	// are we using a unix socket?
-	if upstream != nil && upstream.Scheme == "unix" {
-		r.log.Info("using unix socket for upstream", zap.String("socket", fmt.Sprintf("%s%s", upstream.Host, upstream.Path)))
-
-		socketPath := fmt.Sprintf("%s%s", upstream.Host, upstream.Path)
-		dialer = func(network, address string) (net.Conn, error) {
-			return net.Dial("unix", socketPath)
-		}
-		upstream.Path = ""
-		upstream.Host = "domain-sock"
-		upstream.Scheme = unsecureScheme
-	}
-	// create the upstream tls configuration
+func (r *oauthProxy) buildProxyTLSConfig() (*tls.Config, error) {
 	//nolint:gas
 	tlsConfig := &tls.Config{InsecureSkipVerify: r.config.SkipUpstreamTLSVerify}
 
@@ -613,7 +593,7 @@ func (r *oauthProxy) createUpstreamProxy(upstream *url.URL) error {
 		cert, err := ioutil.ReadFile(r.config.TLSClientCertificate)
 		if err != nil {
 			r.log.Error("unable to read client certificate", zap.String("path", r.config.TLSClientCertificate), zap.Error(err))
-			return err
+			return nil, err
 		}
 		pool := x509.NewCertPool()
 		pool.AppendCertsFromPEM(cert)
@@ -626,31 +606,11 @@ func (r *oauthProxy) createUpstreamProxy(upstream *url.URL) error {
 		r.log.Info("loading the upstream ca", zap.String("path", r.config.UpstreamCA))
 		ca, err := ioutil.ReadFile(r.config.UpstreamCA)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		pool := x509.NewCertPool()
 		pool.AppendCertsFromPEM(ca)
 		tlsConfig.RootCAs = pool
 	}
-
-	// create the forwarding proxy
-	proxy := goproxy.NewProxyHttpServer()
-	proxy.KeepDestinationHeaders = !r.config.CorsDisableUpstream
-	proxy.Logger = httplog.New(ioutil.Discard, "", 0)
-	proxy.KeepDestinationHeaders = !r.config.CorsDisableUpstream
-	r.upstream = proxy
-
-	// update the tls configuration of the reverse proxy
-	r.upstream.(*goproxy.ProxyHttpServer).Tr = &http.Transport{
-		Dial:                  dialer,
-		DisableKeepAlives:     !r.config.UpstreamKeepalives,
-		ExpectContinueTimeout: r.config.UpstreamExpectContinueTimeout,
-		ResponseHeaderTimeout: r.config.UpstreamResponseHeaderTimeout,
-		TLSClientConfig:       tlsConfig,
-		TLSHandshakeTimeout:   r.config.UpstreamTLSHandshakeTimeout,
-		MaxIdleConns:          r.config.MaxIdleConns,
-		MaxIdleConnsPerHost:   r.config.MaxIdleConnsPerHost,
-	}
-
-	return nil
+	return tlsConfig, nil
 }
