@@ -467,7 +467,10 @@ func (r *oauthProxy) createHTTPListener(config listenerConfig) (net.Listener, er
 				if err != nil {
 					return nil, err
 				}
-				caCertPool.AppendCertsFromPEM(clientPEMCert)
+				ok := caCertPool.AppendCertsFromPEM(clientPEMCert)
+				if !ok {
+					return nil, fmt.Errorf("invalid client PEM certificate")
+				}
 			}
 			tlsConfig.ClientCAs = caCertPool
 			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
@@ -511,6 +514,20 @@ func (r *oauthProxy) newOpenIDClient() (*oidc.Client, oidc.ProviderConfig, *http
 	}
 
 	// step: create a idp http client
+	var pool *x509.CertPool
+	if r.config.OpenIDProviderCA != "" {
+		// TODO(fredbi): factorize this
+		cert, erf := ioutil.ReadFile(r.config.OpenIDProviderCA)
+		if erf != nil {
+			r.log.Error("unable to read OpenIDProvider CA certificate", zap.String("path", r.config.OpenIDProviderCA), zap.Error(erf))
+			return nil, config, nil, erf
+		}
+		pool = x509.NewCertPool()
+		ok := pool.AppendCertsFromPEM(cert)
+		if !ok {
+			return nil, config, nil, fmt.Errorf("invalid OpenIDProvider PEM certificate")
+		}
+	}
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: func(_ *http.Request) (*url.URL, error) {
@@ -528,6 +545,7 @@ func (r *oauthProxy) newOpenIDClient() (*oidc.Client, oidc.ProviderConfig, *http
 			TLSClientConfig: &tls.Config{
 				//nolint:gas
 				InsecureSkipVerify: r.config.SkipOpenIDProviderTLSVerify,
+				RootCAs:            pool,
 			},
 		},
 		Timeout: time.Second * 10,
@@ -594,7 +612,10 @@ func (r *oauthProxy) buildProxyTLSConfig() (*tls.Config, error) {
 			return nil, err
 		}
 		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM(cert)
+		ok := pool.AppendCertsFromPEM(cert)
+		if !ok {
+			return nil, fmt.Errorf("invalid client PEM certificate")
+		}
 		tlsConfig.ClientCAs = pool
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	}
@@ -607,7 +628,10 @@ func (r *oauthProxy) buildProxyTLSConfig() (*tls.Config, error) {
 			return nil, err
 		}
 		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM(ca)
+		ok := pool.AppendCertsFromPEM(ca)
+		if !ok {
+			return nil, fmt.Errorf("invalid upstream CA PEM certificate")
+		}
 		tlsConfig.RootCAs = pool
 	}
 	return tlsConfig, nil

@@ -16,6 +16,8 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -30,6 +32,27 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func makeTestCACertPool() *x509.CertPool {
+	crt, err := ioutil.ReadFile(caCert)
+	if err != nil {
+		msg := fmt.Sprintf("cannot read test CA cert file: %v", err)
+		panic(msg)
+	}
+	caCertPool := x509.NewCertPool()
+	ok := caCertPool.AppendCertsFromPEM(crt)
+	if !ok {
+		panic("cannot add cert to CA pool")
+	}
+	return caCertPool
+}
+
+// controlledRedirect is a client RoundTripper to capture all cookies exchanged during the redirection process
+// (assuming HttpOnly is not set for testing purpose)
+type controlledRedirect struct {
+	Transport        http.RoundTripper
+	CollectedCookies map[string]*http.Cookie
+}
+
 // checkListenOrBail waits on a endpoint listener to respond.
 // This avoids race conditions with test listieners as go routines
 func checkListenOrBail(endpoint string) bool {
@@ -37,7 +60,13 @@ func checkListenOrBail(endpoint string) bool {
 		maxWaitCycles = 10
 		waitTime      = 100 * time.Millisecond
 	)
-	checkListen := http.Client{}
+	checkListen := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: makeTestCACertPool(),
+			},
+		},
+	}
 	resp, err := checkListen.Get(endpoint)
 	if err == nil {
 		defer func() {
@@ -64,8 +93,15 @@ func runTestGatekeeper(t *testing.T, config *Config) error {
 		return err
 	}
 	_ = proxy.Run()
-	if !assert.True(t, checkListenOrBail("http://"+config.Listen+"/oauth/login")) {
-		err := fmt.Errorf("cannot connect to test http listener on: %s", "http://"+config.Listen+"/oauth/login")
+	var scheme string
+	if config.TLSCertificate != "" {
+		scheme = "https"
+	} else {
+		scheme = "http"
+	}
+	u := fmt.Sprintf("%s://%s/oauth/login", scheme, config.Listen)
+	if !assert.True(t, checkListenOrBail(u)) {
+		err = fmt.Errorf("cannot connect to test %s listener on: %s", scheme, u)
 		t.Logf("%v", err)
 		t.FailNow()
 		return err

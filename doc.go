@@ -163,6 +163,8 @@ type Config struct {
 	OpenIDProviderProxy string `json:"openid-provider-proxy" yaml:"openid-provider-proxy" usage:"proxy for communication with the openid provider"`
 	// OpenIDProviderTimeout is the timeout used to pulling the openid configuration from the provider
 	OpenIDProviderTimeout time.Duration `json:"openid-provider-timeout" yaml:"openid-provider-timeout" usage:"timeout for openid configuration on .well-known/openid-configuration"`
+	// OpenIDProviderCA is the certificate authority issuing the TLS certificate for the OpenID provider
+	OpenIDProviderCA string `json:"openid-provider-ca" yaml:"openid-provider-ca" usage:"certificate authority for openid configuration endpoints"`
 	// BaseURI is prepended to all the generated URIs
 	BaseURI string `json:"base-uri" yaml:"base-uri" usage:"common prefix for all URIs" env:"BASE_URI"`
 	// OAuthURI is the uri for the oauth endpoints for the proxy
@@ -184,7 +186,7 @@ type Config struct {
 	// ResponseHeader is a map of response headers to add to the response
 	ResponseHeaders map[string]string `json:"response-headers" yaml:"response-headers" usage:"custom headers to be added to the http response key=value"`
 
-	// EnableSelfSignedTLS indicates we should create a self-signed ceritificate for the service
+	// EnableSelfSignedTLS indicates we should create a self-signed certificate for the service
 	EnabledSelfSignedTLS bool `json:"enable-self-signed-tls" yaml:"enable-self-signed-tls" usage:"create self signed certificates for the proxy" env:"ENABLE_SELF_SIGNED_TLS"`
 	// SelfSignedTLSHostnames is the list of hostnames to place on the certificate
 	SelfSignedTLSHostnames []string `json:"self-signed-tls-hostnames" yaml:"self-signed-tls-hostnames" usage:"a list of hostnames to place on the self-signed certificate"`
@@ -233,7 +235,7 @@ type Config struct {
 	EnableAuthorizationHeader bool `json:"enable-authorization-header" yaml:"enable-authorization-header" usage:"adds the authorization header to the proxy request" env:"ENABLE_AUTHORIZATION_HEADER"`
 	// EnableAuthorizationCookies indicates we should pass the authorization cookies to the upstream endpoint
 	EnableAuthorizationCookies bool `json:"enable-authorization-cookies" yaml:"enable-authorization-cookies" usage:"adds the authorization cookies to the uptream proxy request" env:"ENABLE_AUTHORIZATION_COOKIES"`
-	// EnableHTTPSRedirect indicate we should redirection http -> https
+	// EnableHTTPSRedirect indicate we should redirect http -> https
 	EnableHTTPSRedirect bool `json:"enable-https-redirection" yaml:"enable-https-redirection" usage:"enable the http to https redirection on the http service"`
 	// EnableProfiling indicates if profiles is switched on
 	EnableProfiling bool `json:"enable-profiling" yaml:"enable-profiling" usage:"switching on the golang profiling via pprof on /debug/pprof, /debug/pprof/heap etc"`
