@@ -192,7 +192,7 @@ func decryptDataBlock(cipherText, key []byte) ([]byte, error) {
 func encodeText(plaintext, key string) (string, error) {
 	var compressedText bytes.Buffer
 	w := zlib.NewWriter(&compressedText)
-	w.Write([]byte(plaintext))
+	_, _ = w.Write([]byte(plaintext))
 	w.Close()
 
 	cipherText, err := encryptDataBlock(compressedText.Bytes(), []byte(key))

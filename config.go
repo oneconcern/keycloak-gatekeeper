@@ -348,7 +348,8 @@ func (r *Config) isTLSValid() error {
 }
 
 func (r *Config) isReverseProxyValid() error {
-	if r.Upstream == "" {
+	switch r.Upstream {
+	case "":
 		if r.EnableDefaultDeny && !r.EnableDefaultNotFound {
 			return errors.New("you expect some default fallback routing, but have not specified an upstream endpoint to proxy to")
 		}
@@ -357,11 +358,12 @@ func (r *Config) isReverseProxyValid() error {
 				return fmt.Errorf("you did not set any default upstream and you have not specified an upstream endpoint to proxy to on resource: %s", resource.URL)
 			}
 		}
-	} else {
+	default:
 		if _, err := url.Parse(r.Upstream); err != nil {
 			return fmt.Errorf("the upstream endpoint is invalid, %s", err)
 		}
 	}
+
 	if r.SkipUpstreamTLSVerify && r.UpstreamCA != "" {
 		return fmt.Errorf("you cannot both require to skip upstream tls and load a root ca to verify it: %s", r.UpstreamCA)
 	}

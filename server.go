@@ -366,10 +366,8 @@ func (r *oauthProxy) createHTTPListener(config listenerConfig) (net.Listener, er
 		if listener, err = net.Listen("unix", socket); err != nil {
 			return nil, err
 		}
-	} else {
-		if listener, err = net.Listen("tcp", config.listen); err != nil {
-			return nil, err
-		}
+	} else if listener, err = net.Listen("tcp", config.listen); err != nil {
+		return nil, err
 	}
 
 	// does it require proxy protocol?

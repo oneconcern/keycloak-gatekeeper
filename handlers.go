@@ -386,6 +386,10 @@ func (r *oauthProxy) logoutHandler(w http.ResponseWriter, req *http.Request) {
 			r.log.Error("unable to post to revocation endpoint", zap.Error(err))
 			return
 		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
 		oauthLatencyMetric.WithLabelValues("revocation").Observe(time.Since(start).Seconds())
 
 		// step: check the response

@@ -38,11 +38,21 @@ func checkListenOrBail(endpoint string) bool {
 		waitTime      = 100 * time.Millisecond
 	)
 	checkListen := http.Client{}
-	_, err := checkListen.Get(endpoint)
+	resp, err := checkListen.Get(endpoint)
+	if err == nil {
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+	}
 	limit := 0
 	for err != nil && limit < maxWaitCycles {
 		time.Sleep(waitTime)
-		_, err = checkListen.Get(endpoint)
+		resp, err = checkListen.Get(endpoint)
+		if err == nil {
+			defer func() {
+				_ = resp.Body.Close()
+			}()
+		}
 		limit++
 	}
 	return limit < maxWaitCycles
@@ -222,6 +232,9 @@ func runTestConnect(t *testing.T, config *Config, listener, route string) (strin
 	if !assert.NoError(t, err) {
 		return "", nil, err
 	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// check that we get the final redirection to app correctly
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
