@@ -191,7 +191,7 @@ func runTestAuth(t *testing.T, listener, realm string) error {
 		authorizeHandler := func(w http.ResponseWriter, req *http.Request) {
 			redirect := req.FormValue("redirect_uri")
 			state := req.FormValue("state")
-			code := "zyx"
+			code := "xyz"
 			location, _ := url.PathUnescape(redirect)
 			u, _ := url.Parse(location)
 			v := u.Query()
