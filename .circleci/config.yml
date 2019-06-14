@@ -62,6 +62,6 @@ workflows:
           context: "OC Common"
           filters:
             tags:
-              only: /^v.*/
+              only: /^v.*-1c/
             branches:
               only: /oneconcern-release/
