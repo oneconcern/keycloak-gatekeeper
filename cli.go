@@ -33,11 +33,11 @@ const durationType = "time.Duration"
 func newOauthProxyApp() *cli.App {
 	config := newDefaultConfig()
 	app := cli.NewApp()
-	app.Name = prog
-	app.Usage = description
+	app.Name = version.Prog
+	app.Usage = version.Description
 	app.Version = version.GetVersion()
-	app.Author = author
-	app.Email = email
+	app.Author = version.Author
+	app.Email = version.Email
 	app.Flags = getCommandLineOptions()
 	app.UsageText = "keycloak-gatekeeper [options]"
 

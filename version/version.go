@@ -1,5 +1,5 @@
 /*
-Package version holds build information defined at build time
+Package version holds build information defined at build time for gatekeeper
 */
 package version
 
@@ -7,6 +7,17 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+)
+
+const (
+	// Prog is this program name
+	Prog = "keycloak-gatekeeper"
+	// Author of this package
+	Author = "oneconcern"
+	// Email address for inquiries
+	Email = "frederic@oneconcern.com"
+	// Description of gatekeeper
+	Description = "is a transparent authenticating proxy using the keycloak service for authentication and authorization"
 )
 
 var (

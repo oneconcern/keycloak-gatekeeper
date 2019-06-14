@@ -25,7 +25,7 @@ func (r *oauthProxy) errorResponse(w http.ResponseWriter, msg string, code int, 
 		r.log.Warn(msg, zap.Int("http_status", code))
 	} else {
 		if code == http.StatusInternalServerError {
-			// we log internal server errors as ERRROR
+			// we log internal server errors as ERROR
 			r.log.Error(msg, zap.Int("http_status", code), zap.Error(err))
 		} else {
 			// we log user errors as WARNING

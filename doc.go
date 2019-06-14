@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/*Package main provides a transparent authentication proxy suited for use with Keycloak as OIDC identity provider
+ */
 package main
 
 import (
@@ -27,11 +29,6 @@ import (
 type contextKey int8
 
 const (
-	prog        = "keycloak-gatekeeper"
-	author      = "Keycloak"
-	email       = "keycloak-user@lists.jboss.org"
-	description = "is a proxy using the keycloak service for auth and authorization"
-
 	authorizationHeader = "Authorization"
 	envPrefix           = "PROXY_"
 	headerUpgrade       = "Upgrade"

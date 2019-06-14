@@ -29,6 +29,7 @@ import (
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/elazarl/goproxy"
+	"github.com/oneconcern/keycloak-gatekeeper/version"
 	"go.uber.org/zap"
 )
 
@@ -254,7 +255,7 @@ func (r *oauthProxy) forwardProxyHandler() func(*http.Request, *http.Response) {
 		// is the host being signed?
 		if len(r.config.ForwardingDomains) == 0 || containsSubString(hostname, r.config.ForwardingDomains) {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", state.token.Encode()))
-			req.Header.Set("X-Forwarded-Agent", prog)
+			req.Header.Set("X-Forwarded-Agent", version.Prog)
 		}
 	}
 }

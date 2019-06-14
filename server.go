@@ -82,7 +82,7 @@ func newProxy(config *Config) (*oauthProxy, error) {
 		return nil, err
 	}
 
-	log.Info("starting the service", zap.String("prog", prog), zap.String("author", author), zap.String("version", version.GetVersion()))
+	log.Info("starting the service", zap.String("prog", version.Prog), zap.String("author", version.Author), zap.String("version", version.GetVersion()))
 	svc := &oauthProxy{
 		config:         config,
 		log:            log,

@@ -108,8 +108,10 @@ func runTestTLSUpstream(t *testing.T, listener, route string, markers ...string)
 		}
 		http.HandleFunc(route, upstreamHandler)
 		for _, m := range markers {
-			http.HandleFunc("/"+m, func(w http.ResponseWriter, req *http.Request) {
-				_, _ = io.WriteString(w, `{"pushed_marker": "`+m+`"}`)
+			val := m
+			http.HandleFunc("/"+val, func(w http.ResponseWriter, req *http.Request) {
+				msg := `{"pushed_marker": "` + val + `"}`
+				_, _ = io.WriteString(w, msg)
 				w.Header().Set("Content-Type", "application/json")
 			})
 		}
