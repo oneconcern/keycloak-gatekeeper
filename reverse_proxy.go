@@ -32,6 +32,7 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/rs/cors"
 	"go.uber.org/zap"
+	"golang.org/x/net/http2"
 )
 
 // createReverseProxy creates a reverse proxy
@@ -221,7 +222,7 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 			}
 
 			// @step: add the proxy forwarding headers
-			req.Header.Add("X-Forwarded-For", realIP(req))
+			req.Header.Add("X-Forwarded-For", realIP(req)) // TODO(fredbi): check if still necessary with net/http/httputil reverse proxy
 			req.Header.Set("X-Forwarded-Host", req.Host)
 			if fp := req.Header.Get("X-Forwarded-Proto"); fp != "" {
 				req.Header.Set("X-Forwarded-Proto", fp)
@@ -270,7 +271,7 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 			}
 			r.log.Debug("proxying to upstream", zap.String("matched_resource", matched), zap.Stringer("upstream_url", req.URL), zap.String("host_header", req.Host))
 
-			if isUpgradedConnection(req) {
+			if isUpgradedConnection(req) { // TODO(fredbi): check if still required with net/http/httputils reverse proxy
 				r.log.Debug("upgrading the connnection", zap.String("client_ip", req.RemoteAddr))
 				if err := tryUpdateConnection(req, w, req.URL); err != nil {
 					r.errorResponse(w, "failed to upgrade connection", http.StatusInternalServerError, err)
@@ -285,8 +286,7 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 }
 
 // createStdProxy creates a reverse http proxy client to the upstream
-// TODO: enable http2 support
-// TODO:: multiple proxies with possibly different dialers and TLS configs
+// TODO(fredbi): support multiple proxies with possibly different dialers and TLS configs
 func (r *oauthProxy) createStdProxy(upstream *url.URL) error {
 	dialer := (&net.Dialer{
 		KeepAlive: r.config.UpstreamKeepaliveTimeout,
@@ -312,18 +312,23 @@ func (r *oauthProxy) createStdProxy(upstream *url.URL) error {
 		return err
 	}
 
+	transport := &http.Transport{
+		DialContext:           dialer,
+		TLSClientConfig:       tlsConfig,
+		TLSHandshakeTimeout:   r.config.UpstreamTLSHandshakeTimeout,
+		MaxIdleConns:          r.config.MaxIdleConns,
+		MaxIdleConnsPerHost:   r.config.MaxIdleConnsPerHost,
+		DisableKeepAlives:     !r.config.UpstreamKeepalives,
+		ExpectContinueTimeout: r.config.UpstreamExpectContinueTimeout,
+		ResponseHeaderTimeout: r.config.UpstreamResponseHeaderTimeout,
+	}
+	err = http2.ConfigureTransport(transport)
+	if err != nil {
+		return err
+	}
 	r.upstream = &httputil.ReverseProxy{
-		Director: func(*http.Request) {}, // most of the work is done by middleware. Some of this could be done by Director
-		Transport: &http.Transport{
-			DialContext:           dialer,
-			TLSClientConfig:       tlsConfig,
-			TLSHandshakeTimeout:   r.config.UpstreamTLSHandshakeTimeout,
-			MaxIdleConns:          r.config.MaxIdleConns,
-			MaxIdleConnsPerHost:   r.config.MaxIdleConnsPerHost,
-			DisableKeepAlives:     !r.config.UpstreamKeepalives,
-			ExpectContinueTimeout: r.config.UpstreamExpectContinueTimeout,
-			ResponseHeaderTimeout: r.config.UpstreamResponseHeaderTimeout,
-		},
+		Director:  func(*http.Request) {}, // most of the work is done by middleware. Some of this could be done by Director
+		Transport: transport,
 	}
 
 	return nil

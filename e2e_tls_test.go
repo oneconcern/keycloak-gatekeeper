@@ -23,6 +23,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"path"
 	"testing"
@@ -52,13 +53,53 @@ const (
 
 	e2eTLSUpstreamAppURL      = "/ok"
 	e2eTLSUpstreamUpstreamURL = "/apitls"
+
+	// testPush configure test upstream server to send HTTP/2 pushed responses
+	// TODO: implement suitable go client for this
+	testPush = false
 )
 
 func runTestTLSUpstream(t *testing.T, listener, route string, markers ...string) error {
 	go func() {
 		upstreamHandler := func(w http.ResponseWriter, req *http.Request) {
-			_, _ = io.WriteString(w, `{"listener": "`+listener+`", "route": "`+route+`", "message": "test"`)
+
+			dump, _ := httputil.DumpRequest(req, false)
+			nowPushing := false
+			inBody := make([]string, 0, len(markers))
+			inPushed := make([]string, 0, len(markers))
+			t.Logf("upstream received: %q", string(dump))
 			for _, m := range markers {
+				if m == "push" {
+					nowPushing = true
+				}
+				if nowPushing {
+					inPushed = append(inPushed, m)
+				} else {
+					inBody = append(inBody, m)
+				}
+			}
+
+			if pusher, ok := w.(http.Pusher); testPush && ok {
+				for _, m := range inPushed {
+					if err := pusher.Push("/"+m, nil); err != nil {
+						// most likely, client did not enable push
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusInternalServerError)
+						_, _ = io.WriteString(w, `{"error": "cannot push: `+err.Error()+`"}`)
+						return
+					}
+				}
+			} else if testPush && nowPushing {
+				// for some reason push is not enabled (e.g. not http/2): should check that client & reverse proxy
+				// properly enable http/2
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = io.WriteString(w, `{"error": "wanted to push, but not supported"}`)
+				return
+			}
+
+			_, _ = io.WriteString(w, `{"listener": "`+listener+`", "route": "`+route+`", "message": "test"`)
+			for _, m := range inBody {
 				_, _ = io.WriteString(w, `,"marker": "`+m+`"`)
 			}
 			_, _ = io.WriteString(w, `}`)
@@ -66,6 +107,12 @@ func runTestTLSUpstream(t *testing.T, listener, route string, markers ...string)
 			w.Header().Set("X-Upstream-Response-Header", "test")
 		}
 		http.HandleFunc(route, upstreamHandler)
+		for _, m := range markers {
+			http.HandleFunc("/"+m, func(w http.ResponseWriter, req *http.Request) {
+				_, _ = io.WriteString(w, `{"pushed_marker": "`+m+`"}`)
+				w.Header().Set("Content-Type", "application/json")
+			})
+		}
 		_ = http.ListenAndServeTLS(listener, upstreamCert, upstreamKey, nil)
 	}()
 	if !assert.True(t, checkListenOrBail("https://"+path.Join(listener, route))) {
@@ -99,14 +146,19 @@ func runTestTLSApp(t *testing.T, listener, route string) error {
 }
 
 func runTestTLSConnect(t *testing.T, config *Config, listener, route string) (string, []*http.Cookie, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs: makeTestCACertPool(),
+		},
+	}
+	if err := http2.ConfigureTransport(transport); err != nil {
+		return "", nil, err
+	}
+
 	client := http.Client{
 		Transport: controlledRedirect{
 			CollectedCookies: make(map[string]*http.Cookie, 10),
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs: makeTestCACertPool(),
-				},
-			},
+			Transport:        transport,
 		},
 		CheckRedirect: onRedirect,
 	}
@@ -295,7 +347,7 @@ func TestTLSUpstream(t *testing.T) {
 	require.NoError(t, err)
 
 	// launch fake upstream resource server
-	err = runTestTLSUpstream(t, e2eTLSUpstreamUpstreamListener, e2eTLSUpstreamUpstreamURL, "mark1")
+	err = runTestTLSUpstream(t, e2eTLSUpstreamUpstreamListener, e2eTLSUpstreamUpstreamURL, "mark1", "push", "mark2")
 	require.NoError(t, err)
 
 	// launch fake app server where to land after authentication
@@ -318,8 +370,12 @@ func TestTLSUpstream(t *testing.T) {
 			NextProtos: []string{"h2", "http/1.1"},
 		},
 	}
+
 	err = http2.ConfigureTransport(transport)
 	require.NoError(t, err)
+
+	// NOTE(fredbi): no support for client consuming http/2 pushes in http client
+	// https://github.com/golang/go/issues/18594
 	client := http.Client{
 		Transport: transport,
 	}
@@ -343,8 +399,13 @@ func TestTLSUpstream(t *testing.T) {
 		_ = resp.Body.Close()
 	}()
 
+	dump, err := httputil.DumpResponse(resp, true)
+	require.NoError(t, err)
+	t.Logf("%q", dump)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, 2, resp.ProtoMajor)
+	// also interactive test may produce HTTP/2 traces:
+	// GODEBUG=http2debug=2 ; go test -v -run TLSUpstream
+	assert.Equal(t, 2, resp.ProtoMajor) // assert response is HTTP/2
 	buf, err := ioutil.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Contains(t, string(buf), "mark1")
