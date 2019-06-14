@@ -17,20 +17,11 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/prometheus/client_golang/prometheus"
-)
-
-var (
-	release  = "v2.3.0"
-	gitsha   = "no gitsha provided"
-	compiled = "0"
-	version  = ""
 )
 
 type contextKey int8
@@ -386,19 +377,6 @@ type Config struct {
 
 	// DisableAllLogging indicates no logging at all
 	DisableAllLogging bool `json:"disable-all-logging" yaml:"disable-all-logging" usage:"disables all logging to stdout and stderr"`
-}
-
-// getVersion returns the proxy version
-func getVersion() string {
-	if version == "" {
-		tm, err := strconv.ParseInt(compiled, 10, 64)
-		if err != nil {
-			return "unable to parse compiled time"
-		}
-		version = fmt.Sprintf("%s (git+sha: %s, built: %s)", release, gitsha, time.Unix(tm, 0).Format("02-01-2006"))
-	}
-
-	return version
 }
 
 // RequestScope is a request level context scope passed between middleware

@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/oneconcern/keycloak-gatekeeper/version"
 	"github.com/urfave/cli"
 )
 
@@ -34,7 +35,7 @@ func newOauthProxyApp() *cli.App {
 	app := cli.NewApp()
 	app.Name = prog
 	app.Usage = description
-	app.Version = getVersion()
+	app.Version = version.GetVersion()
 	app.Author = author
 	app.Email = email
 	app.Flags = getCommandLineOptions()

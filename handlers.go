@@ -33,6 +33,7 @@ import (
 
 	"github.com/coreos/go-oidc/oauth2"
 	gcsrf "github.com/gorilla/csrf"
+	"github.com/oneconcern/keycloak-gatekeeper/version"
 
 	"github.com/go-chi/chi"
 	"go.uber.org/zap"
@@ -438,7 +439,7 @@ func (r *oauthProxy) tokenHandler(w http.ResponseWriter, req *http.Request) {
 // healthHandler is a health check handler for the service
 func (r *oauthProxy) healthHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", jsonMime)
-	w.Header().Set(versionHeader, getVersion())
+	w.Header().Set(versionHeader, version.GetVersion())
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"OK"}`))
 }

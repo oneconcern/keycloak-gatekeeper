@@ -40,6 +40,7 @@ import (
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
+	"github.com/oneconcern/keycloak-gatekeeper/version"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
@@ -81,7 +82,7 @@ func newProxy(config *Config) (*oauthProxy, error) {
 		return nil, err
 	}
 
-	log.Info("starting the service", zap.String("prog", prog), zap.String("author", author), zap.String("version", version))
+	log.Info("starting the service", zap.String("prog", prog), zap.String("author", author), zap.String("version", version.GetVersion()))
 	svc := &oauthProxy{
 		config:         config,
 		log:            log,
