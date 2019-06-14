@@ -462,16 +462,10 @@ func (r *oauthProxy) createHTTPListener(config listenerConfig) (net.Listener, er
 		// @check if we are doing mutual tls
 		if len(config.clientCerts) > 0 {
 			r.log.Info("enabling mutual tls support with client certs")
-			caCertPool := x509.NewCertPool()
-			for _, clientCert := range config.clientCerts {
-				clientPEMCert, err := ioutil.ReadFile(clientCert)
-				if err != nil {
-					return nil, err
-				}
-				ok := caCertPool.AppendCertsFromPEM(clientPEMCert)
-				if !ok {
-					return nil, fmt.Errorf("invalid client PEM certificate")
-				}
+			caCertPool, erp := makeCertPool("client", config.clientCerts...)
+			if erp != nil {
+				r.log.Error("unable to read client CA certificate", zap.Error(erp))
+				return nil, erp
 			}
 			tlsConfig.ClientCAs = caCertPool
 			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
@@ -517,16 +511,10 @@ func (r *oauthProxy) newOpenIDClient() (*oidc.Client, oidc.ProviderConfig, *http
 	// step: create a idp http client
 	var pool *x509.CertPool
 	if r.config.OpenIDProviderCA != "" {
-		// TODO(fredbi): factorize this
-		cert, erf := ioutil.ReadFile(r.config.OpenIDProviderCA)
-		if erf != nil {
-			r.log.Error("unable to read OpenIDProvider CA certificate", zap.String("path", r.config.OpenIDProviderCA), zap.Error(erf))
-			return nil, config, nil, erf
-		}
-		pool = x509.NewCertPool()
-		ok := pool.AppendCertsFromPEM(cert)
-		if !ok {
-			return nil, config, nil, fmt.Errorf("invalid OpenIDProvider PEM certificate")
+		pool, err = makeCertPool("OpenID provider", r.config.OpenIDProviderCA)
+		if err != nil {
+			r.log.Error("unable to read OpenIDProvider CA certificate", zap.String("path", r.config.OpenIDProviderCA), zap.Error(err))
+			return nil, config, nil, err
 		}
 	}
 	hc := &http.Client{
@@ -607,33 +595,39 @@ func (r *oauthProxy) buildProxyTLSConfig() (*tls.Config, error) {
 	// @TODO provide a means to reload the client certificate when it expires. I'm not sure if it's just a
 	// case of update the http transport settings - Also where to place this go-routine?
 	if r.config.TLSClientCertificate != "" {
-		cert, err := ioutil.ReadFile(r.config.TLSClientCertificate)
+		pool, err := makeCertPool("client", r.config.TLSClientCertificate)
 		if err != nil {
 			r.log.Error("unable to read client certificate", zap.String("path", r.config.TLSClientCertificate), zap.Error(err))
 			return nil, err
-		}
-		pool := x509.NewCertPool()
-		ok := pool.AppendCertsFromPEM(cert)
-		if !ok {
-			return nil, fmt.Errorf("invalid client PEM certificate")
 		}
 		tlsConfig.ClientCAs = pool
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
-	// @check if we have a upstream ca to verify the upstream
+	// @check if we have an upstream ca to verify the upstream
 	if r.config.UpstreamCA != "" {
 		r.log.Info("loading the upstream ca", zap.String("path", r.config.UpstreamCA))
-		ca, err := ioutil.ReadFile(r.config.UpstreamCA)
+		pool, err := makeCertPool("upstream CA", r.config.UpstreamCA)
 		if err != nil {
+			r.log.Error("unable to read upstream CA certificate", zap.String("path", r.config.UpstreamCA), zap.Error(err))
 			return nil, err
-		}
-		pool := x509.NewCertPool()
-		ok := pool.AppendCertsFromPEM(ca)
-		if !ok {
-			return nil, fmt.Errorf("invalid upstream CA PEM certificate")
 		}
 		tlsConfig.RootCAs = pool
 	}
 	return tlsConfig, nil
+}
+
+func makeCertPool(who string, certs ...string) (*x509.CertPool, error) {
+	caCertPool := x509.NewCertPool()
+	for _, cert := range certs {
+		caPEMCert, err := ioutil.ReadFile(cert)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read cert file for %s: %q: %v", who, cert, err)
+		}
+		ok := caCertPool.AppendCertsFromPEM(caPEMCert)
+		if !ok {
+			return nil, fmt.Errorf("invalid %s PEM certificate", who)
+		}
+	}
+	return caCertPool, nil
 }
