@@ -294,6 +294,8 @@ func (r *oauthProxy) createStdProxy(upstream *url.URL) error {
 	}).DialContext
 
 	// are we using a unix socket?
+	// TODO(fredbi): this does not work with multiple upstream configuration
+	// TODO(fredbi): create as many upstreams as different upstream schemes
 	if upstream != nil && upstream.Scheme == "unix" {
 		r.log.Info("using unix socket for upstream", zap.String("socket", fmt.Sprintf("%s%s", upstream.Host, upstream.Path)))
 
@@ -327,8 +329,12 @@ func (r *oauthProxy) createStdProxy(upstream *url.URL) error {
 		return err
 	}
 	r.upstream = &httputil.ReverseProxy{
-		Director:  func(*http.Request) {}, // most of the work is done by middleware. Some of this could be done by Director
+		Director:  func(*http.Request) {}, // most of the work is already done by middleware above. Some of this could be done by Director just as well
 		Transport: transport,
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+			r.log.Warn("reverse proxy error", zap.Error(err))
+			errorResponse(w, "", http.StatusBadGateway)
+		},
 	}
 
 	return nil

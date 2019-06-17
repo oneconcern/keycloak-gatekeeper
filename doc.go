@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-/*Package main provides a transparent authentication proxy suited for use with Keycloak as OIDC identity provider
- */
+/*
+Package main provides a transparent authentication proxy suited for use with Keycloak as OIDC identity provider
+*/
 package main
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
@@ -29,11 +29,9 @@ import (
 type contextKey int8
 
 const (
-	authorizationHeader = "Authorization"
-	envPrefix           = "PROXY_"
-	headerUpgrade       = "Upgrade"
-	versionHeader       = "X-Auth-Proxy-Version"
+	envPrefix = "PROXY_"
 
+	// defaults proxy endpoints
 	authorizationURL = "/authorize"
 	callbackURL      = "/callback"
 	expiredURL       = "/expired"
@@ -44,6 +42,7 @@ const (
 	tokenURL         = "/token"
 	debugURL         = "/debug/pprof"
 
+	// default claims used to analyze access token
 	claimAudience       = "aud"
 	claimPreferredName  = "preferred_username"
 	claimRealmAccess    = "realm_access"
@@ -51,23 +50,26 @@ const (
 	claimResourceRoles  = "roles"
 	claimGroups         = "groups"
 
+	// default cookies names
 	accessCookie       = "kc-access"
 	refreshCookie      = "kc-state"
 	requestURICookie   = "request_uri"
 	requestStateCookie = "OAuth_Token_Request_State"
-	unsecureScheme     = "http"
-	secureScheme       = "https"
-	anyMethod          = "ANY"
-	allRoutes          = "/*"
-	jsonMime           = "application/json; charset=utf-8"
+
+	unsecureScheme = "http"
+	secureScheme   = "https"
+	anyMethod      = "ANY"
+	allRoutes      = "/*"
 
 	_ contextKey = iota
 	contextScopeName
-)
 
-const (
+	jsonMime            = "application/json; charset=utf-8"
 	headerXForwardedFor = "X-Forwarded-For"
 	headerXRealIP       = "X-Real-IP"
+	authorizationHeader = "Authorization"
+	headerUpgrade       = "Upgrade"
+	versionHeader       = "X-Auth-Proxy-Version"
 )
 
 var (
@@ -104,23 +106,6 @@ var (
 		},
 		[]string{"code", "method"},
 	)
-)
-
-var (
-	// ErrSessionNotFound no session found in the request
-	ErrSessionNotFound = errors.New("authentication session not found")
-	// ErrNoSessionStateFound means there was not persist state
-	ErrNoSessionStateFound = errors.New("no session state found")
-	// ErrInvalidSession the session is invalid
-	ErrInvalidSession = errors.New("invalid session identifier")
-	// ErrAccessTokenExpired indicates the access token has expired
-	ErrAccessTokenExpired = errors.New("the access token has expired")
-	// ErrRefreshTokenExpired indicates the refresh token as expired
-	ErrRefreshTokenExpired = errors.New("the refresh token has expired")
-	// ErrNoTokenAudience indicates their is not audience in the token
-	ErrNoTokenAudience = errors.New("the token does not audience in claims")
-	// ErrDecryption indicates we can't decrypt the token
-	ErrDecryption = errors.New("failed to decrypt token")
 )
 
 // Config is the configuration for the proxy
@@ -162,7 +147,7 @@ type Config struct {
 	// Upstream is the upstream endpoint i.e whom were proxying to
 	Upstream string `json:"upstream-url" yaml:"upstream-url" usage:"url for the upstream endpoint you wish to proxy" env:"UPSTREAM_URL"`
 	// UpstreamCA is the path to a CA certificate in PEM format to validate the upstream certificate
-	UpstreamCA string `json:"upstream-ca" yaml:"upstream-ca" usage:"the path to a file container a CA certificate to validate the upstream tls endpoint"`
+	UpstreamCA string `json:"upstream-ca" yaml:"upstream-ca" usage:"the path to a file container a CA certificate to validate the upstream tls endpoint" env:"UPSTREAM_CA"`
 	// Resources is a list of protected resources
 	Resources []*Resource `json:"resources" yaml:"resources" usage:"list of resources 'uri=/admin*|methods=GET,PUT|roles=role1,role2'"`
 	// Headers permits adding customs headers across the board
@@ -285,7 +270,7 @@ type Config struct {
 
 	// TLSAdminCertificate is the location for a tls certificate for admin https endpoint. Defaults to TLSCertificate.
 	TLSAdminCertificate string `json:"tls-admin-cert" yaml:"tls-admin-cert" usage:"path to ths TLS certificate" env:"TLS_ADMIN_CERTIFICATE"`
-	// TLSAdminPrivateKey is the location of a tls private key for admin https endpoint. Default to TLSPrivateKey
+	// TLSAdminPrivateKey is the location of a tls private key for admin https endpoint. Defaults to TLSPrivateKey
 	TLSAdminPrivateKey string `json:"tls-admin-private-key" yaml:"tls-admin-private-key" usage:"path to the private key for TLS" env:"TLS_ADMIN_PRIVATE_KEY"`
 	// TLSCaCertificate is the CA certificate which the client cert must be signed
 	TLSAdminCaCertificate string `json:"tls-admin-ca-certificate" yaml:"tls-admin-ca-certificate" usage:"path to the ca certificate used for signing requests" env:"TLS_ADMIN_CA_CERTIFICATE"`
@@ -308,11 +293,13 @@ type Config struct {
 	CorsMaxAge time.Duration `json:"cors-max-age" yaml:"cors-max-age" usage:"max age applied to cors headers (Access-Control-Max-Age)"`
 	// CorsDisableUpstream disables CORS headers prepared by the gatekeeper from the relayed upstream response (deprecated)
 	CorsDisableUpstream bool `json:"cors-disable-upstream" yaml:"cors-disable-upstream" usage:"Deprecated: do not extend CORS support to upstream responses: only gatekeeper endpoints are CORS-enabled"`
+
 	// Hostnames is a list of hostname's the service should response to
 	Hostnames []string `json:"hostnames" yaml:"hostnames" usage:"list of hostnames the service will respond to"`
 
 	// Store is a url for a store resource, used to hold the refresh tokens
 	StoreURL string `json:"store-url" yaml:"store-url" usage:"url for the storage subsystem, e.g redis://127.0.0.1:6379, file:///etc/tokens.file"`
+
 	// EncryptionKey is the encryption key used to encrypt the refresh token
 	EncryptionKey string `json:"encryption-key" yaml:"encryption-key" usage:"encryption key used to encryption the session state" env:"ENCRYPTION_KEY"`
 
@@ -320,14 +307,16 @@ type Config struct {
 	InvalidAuthRedirectsWith303 bool `json:"invalid-auth-redirects-with-303" yaml:"invalid-auth-redirects-with-303" usage:"use HTTP 303 redirects instead of 307 for invalid auth tokens"`
 	// NoRedirects informs we should hand back a 401 not a redirect
 	NoRedirects bool `json:"no-redirects" yaml:"no-redirects" usage:"do not have back redirects when no authentication is present, 401 them"`
+
 	// SkipTokenVerification tells the service to skip verifying the access token - for testing purposes
 	SkipTokenVerification bool `json:"skip-token-verification" yaml:"skip-token-verification" usage:"TESTING ONLY; bypass token verification, only expiration and roles enforced"`
+
 	// UpstreamKeepalives specifies whether we use keepalives on the upstream
 	UpstreamKeepalives bool `json:"upstream-keepalives" yaml:"upstream-keepalives" usage:"enables or disables the keepalive connections for upstream endpoint"`
-	// UpstreamTimeout is the maximum amount of time a dial will wait for a connect to complete
-	UpstreamTimeout time.Duration `json:"upstream-timeout" yaml:"upstream-timeout" usage:"maximum amount of time a dial will wait for a connect to complete"`
-	// UpstreamKeepaliveTimeout is the upstream keepalive timeout
-	UpstreamKeepaliveTimeout time.Duration `json:"upstream-keepalive-timeout" yaml:"upstream-keepalive-timeout" usage:"specifies the keep-alive period for an active network connection"`
+	// UpstreamTimeout is the maximum amount of time a dial will wait for a connect to complete. Defaults to 10s
+	UpstreamTimeout time.Duration `json:"upstream-timeout" yaml:"upstream-timeout" usage:"maximum amount of time a dial will wait for a connect to complete. Defaults to 10s" env:"UPSTREAM_TIMEOUT"`
+	// UpstreamKeepaliveTimeout is the upstream keepalive timeout. Defaults to 10s
+	UpstreamKeepaliveTimeout time.Duration `json:"upstream-keepalive-timeout" yaml:"upstream-keepalive-timeout" usage:"specifies the keep-alive period for an active network connection. Defaults to 10s" env:"UPSTREAM_KEEPALIVE_TIMEOUT"`
 	// UpstreamTLSHandshakeTimeout is the timeout for upstream to tls handshake
 	UpstreamTLSHandshakeTimeout time.Duration `json:"upstream-tls-handshake-timeout" yaml:"upstream-tls-handshake-timeout" usage:"the timeout placed on the tls handshake for upstream"`
 	// UpstreamResponseHeaderTimeout is the timeout for upstream header response
@@ -347,10 +336,10 @@ type Config struct {
 
 	// ServerReadTimeout is the read timeout on the http server
 	ServerReadTimeout time.Duration `json:"server-read-timeout" yaml:"server-read-timeout" usage:"the server read timeout on the http server"`
-	// ServerWriteTimeout is the write timeout on the http server
+	// ServerWriteTimeout is the write timeout on the http server. Defaults to 11s (should be larger than UpstreamTimeout)
 	ServerWriteTimeout time.Duration `json:"server-write-timeout" yaml:"server-write-timeout" usage:"the server write timeout on the http server"`
 	// ServerIdleTimeout is the idle timeout on the http server
-	ServerIdleTimeout time.Duration `json:"server-idle-timeout" yaml:"server-idle-timeout" usage:"the server idle timeout on the http server"`
+	ServerIdleTimeout time.Duration `json:"server-idle-timeout" yaml:"server-idle-timeout" usage:"the server idle timeout on the http server" env:"SERVER_IDLE_TIMEOUT"`
 
 	// UseLetsEncrypt controls if we should use letsencrypt to retrieve certificates
 	UseLetsEncrypt bool `json:"use-letsencrypt" yaml:"use-letsencrypt" usage:"use letsencrypt for certificates"`

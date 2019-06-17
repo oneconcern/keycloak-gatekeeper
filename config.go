@@ -38,8 +38,11 @@ func newDefaultConfig() *Config {
 		AccessTokenDuration:           time.Duration(720) * time.Hour,
 		CookieAccessName:              accessCookie,
 		CookieRefreshName:             refreshCookie,
+		CSRFCookieName:                "kc-csrf",
+		CSRFHeader:                    "X-Csrf-Token",
 		EnableAuthorizationCookies:    true,
 		EnableAuthorizationHeader:     true,
+		EnableCSRF:                    false,
 		EnableDefaultDeny:             true,
 		EnableSessionCookies:          true,
 		EnableTokenHeader:             true,
@@ -60,7 +63,7 @@ func newDefaultConfig() *Config {
 		SecureCookie:                  true,
 		ServerIdleTimeout:             120 * time.Second,
 		ServerReadTimeout:             10 * time.Second,
-		ServerWriteTimeout:            10 * time.Second,
+		ServerWriteTimeout:            11 * time.Second, // make it upstream timeout + 1s to avoid closing the connection before headers are sent
 		SkipOpenIDProviderTLSVerify:   false,
 		SkipUpstreamTLSVerify:         true,
 		Tags:                          make(map[string]string),
@@ -71,9 +74,6 @@ func newDefaultConfig() *Config {
 		UpstreamTLSHandshakeTimeout:   10 * time.Second,
 		UpstreamTimeout:               10 * time.Second,
 		UseLetsEncrypt:                false,
-		EnableCSRF:                    false,
-		CSRFCookieName:                "kc-csrf",
-		CSRFHeader:                    "X-Csrf-Token",
 	}
 }
 
