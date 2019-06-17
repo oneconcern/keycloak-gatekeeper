@@ -68,8 +68,8 @@ const (
 	headerXForwardedFor = "X-Forwarded-For"
 	headerXRealIP       = "X-Real-IP"
 	authorizationHeader = "Authorization"
-	headerUpgrade       = "Upgrade"
-	versionHeader       = "X-Auth-Proxy-Version"
+	//headerUpgrade       = "Upgrade"
+	versionHeader = "X-Auth-Proxy-Version"
 )
 
 var (

@@ -178,9 +178,15 @@ func (r *oauthProxy) createReverseProxy() error {
 	for name, value := range r.config.MatchClaims {
 		r.log.Info("token must contain", zap.String("claim", name), zap.String("value", value))
 	}
+
+	if r.config.CorsDisableUpstream {
+		r.log.Warn("CorsDisableUpstream is now deprecated and you may safely remove this from your configuration")
+	}
+
 	if r.config.RedirectionURL == "" {
 		r.log.Warn("no redirection url has been set, will use host headers")
 	}
+
 	if r.config.EnableEncryptedToken {
 		r.log.Info("session access tokens will be encrypted")
 	}
@@ -271,15 +277,6 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 			}
 			r.log.Debug("proxying to upstream", zap.String("matched_resource", matched), zap.Stringer("upstream_url", req.URL), zap.String("host_header", req.Host))
 
-			if isUpgradedConnection(req) { // TODO(fredbi): check if still required with net/http/httputils reverse proxy
-				r.log.Debug("upgrading the connnection", zap.String("client_ip", req.RemoteAddr))
-				if err := tryUpdateConnection(req, w, req.URL); err != nil {
-					r.errorResponse(w, "failed to upgrade connection", http.StatusInternalServerError, err)
-					return
-				}
-				return
-			}
-
 			r.upstream.ServeHTTP(w, req)
 		})
 	}
@@ -290,7 +287,7 @@ func (r *oauthProxy) proxyMiddleware(resource *Resource) func(http.Handler) http
 func (r *oauthProxy) createStdProxy(upstream *url.URL) error {
 	dialer := (&net.Dialer{
 		KeepAlive: r.config.UpstreamKeepaliveTimeout,
-		Timeout:   r.config.UpstreamTimeout,
+		Timeout:   r.config.UpstreamTimeout, // NOTE(http2): in order to properly receive response headers, this have to be less than ServerWriteTimeout
 	}).DialContext
 
 	// are we using a unix socket?

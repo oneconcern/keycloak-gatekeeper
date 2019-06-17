@@ -1,5 +1,8 @@
 package main
 
+/*
+// deprecated upgrade: WebSocket connection upgrade is natively supported by stdlib reverse proxy
+
 import (
 	cryptorand "crypto/rand"
 	"crypto/tls"
@@ -23,8 +26,8 @@ func transferBytes(src io.Reader, dest io.Writer, wg *sync.WaitGroup) (int64, er
 	return io.Copy(dest, src)
 }
 
-// tryUpdateConnection attempt to upgrade the connection to a http pdy stream
-func tryUpdateConnection(req *http.Request, writer http.ResponseWriter, endpoint *url.URL) error {
+// tryUpgradeConnection attempt to upgrade the connection to a http pdy stream
+func tryUpgradeConnection(req *http.Request, writer http.ResponseWriter, endpoint *url.URL) error {
 	// step: dial the endpoint
 	server, err := tryDialEndpoint(endpoint)
 	if err != nil {
@@ -87,3 +90,4 @@ func tryDialEndpoint(location *url.URL) (net.Conn, error) {
 		})
 	}
 }
+*/
