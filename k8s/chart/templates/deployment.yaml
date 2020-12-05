@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gatekeeper.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "gatekeeper.name" . }}
+    helm.sh/chart: {{ include "gatekeeper.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "gatekeeper.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "gatekeeper.name" . }}
+        helm.sh/chart: {{ include "gatekeeper.chart" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: '/oauth/metrics'
+        prometheus.io/port: '{{ .Values.config.gatekeeper.adminPort | default .Values.config.gatekeeper.port }}'
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secrets: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+{{ toYaml .Values.hostnames | indent 10 }}
+      containers:
+        - name: "{{ .Chart.Name }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+          {{- if .Values.securityContext }}
+          securityContext:
+{{ toYaml .Values.securityContext | indent 12 }}
+          {{- end }}
+          args:
+            - "--config=/etc/gatekeeper/config.yaml"
+            - "--tls-cert=/etc/gatekeeper/server/tls.crt"
+            - "--tls-private-key=/etc/gatekeeper/server/tls.key"
+            - "--listen=0.0.0.0:{{ .Values.config.gatekeeper.port }}"
+            {{- if .Values.config.gatekeeper.adminPort }}
+            - "--listen-admin=0.0.0.0:{{ .Values.config.gatekeeper.adminPort }}"
+            - --listen-admin-scheme=http
+            {{- end }}
+            {{- if .Values.config.oidc.proxy}}
+            - "--openid-provider-proxy={{ .Values.config.oidc.proxy }}"
+            {{- end }}
+            {{- if .Values.caSecret }}
+            - --upstream-ca=/etc/gatekeeper/upstream/ca.crt
+            {{- end }}
+            {{- if  .Values.config.oidc.discoveryURL }}
+            - "--discovery-url={{ .Values.config.oidc.discoveryURL }}"
+            {{- end }}
+            {{- if  .Values.config.gatekeeper.upstreamURL }}
+            - "--upstream-url={{ .Values.config.gatekeeper.upstreamURL }}"
+            {{- end }}
+            {{- if .Values.extraArgs }}
+{{ toYaml .Values.extraArgs | indent 12 }}
+            {{- end }}
+          env:
+            # OIDC client used by the gateway to connect to Keycloak
+            - name: PROXY_CLIENT_ID
+              value: {{ .Values.config.oidc.clientID }}
+            # OIDC client secret password
+            - name: PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  key: clientSecret
+                  name: {{ include "gatekeeper.fullname" . }}
+            # Encryption key to seal cookies (32 bytes)
+            - name: PROXY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: encryptionKey
+                  name: {{ include "gatekeeper.fullname" . }}
+{{- if .Values.extraEnv }}
+{{ toYaml .Values.extraEnv | indent 12 }}
+{{- end }}
+          ports:
+            - name: https
+              containerPort: {{ .Values.config.gatekeeper.port }}
+              protocol: TCP
+          # livenessProbe:
+          #   httpGet:
+          #     path: /oauth/health
+          #     port: {{ .Values.config.gatekeeper.adminPort | default .Values.config.gatekeeper.port }}
+          #     scheme: HTTP
+          #readinessProbe:
+          # httpGet:
+          #   path: /
+          #   port: https
+          #   scheme: HTTPS
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          volumeMounts:
+            # Configuration file to set complex parameters (arrays, objects)
+            # All simple params are preferrably passed as container args,
+            # or env for secret ones.
+            - mountPath: "/etc/gatekeeper"
+              name: config
+            {{- if .Values.certmanager.enabled }}
+            - mountPath: /etc/gatekeeper/server
+              name: certs
+            {{- end }}
+            {{- if .Values.caSecret }}
+            - mountPath: /etc/gatekeeper/upstream
+              name: upstream-ca
+            {{- end }}
+            {{- if .Values.extraVolumes }}
+{{ toYaml .Values.extraVolumeMounts | indent 12 }}
+            {{- end }}
+    {{- if .Values.extraContainers }}
+{{ toYaml .Values.extraContainers | indent 8 }}
+    {{- end }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "gatekeeper.fullname" . }}
+{{- if .Values.certmanager.enabled }}
+        - name: certs
+          secret:
+            defaultMode: 420
+            secretName: {{ template "gatekeeper.fullname" . }}.{{ .Release.Namespace }}.svc-tls
+{{- end }}
+        {{- if .Values.caSecret }}
+        - name: upstream-ca
+          secret:
+            defaultMode: 420
+            secretName: {{ .Values.caSecret }}
+        {{- end }}
+{{- if .Values.extraVolumes }}
+{{ toYaml .Values.extraVolumes | indent 8 -}}
+{{- end}}

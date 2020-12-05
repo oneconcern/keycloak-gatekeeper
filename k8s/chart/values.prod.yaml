@@ -1,0 +1,161 @@
+# Default values for gatekeeper.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: gcr.io/onec-co/gatekeeper
+  tag: v0.0.12-1c
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 4455
+
+certmanager:
+  enabled: true
+
+ingress:
+  enabled: true
+  annotations:
+    certmanager.k8s.io/acme-challenge-type: http01
+    certmanager.k8s.io/acme-http01-edit-in-place: "false"
+    certmanager.k8s.io/cluster-issuer: letsencrypt-prod
+    kubernetes.io/ingress.class: nginx
+    kubernetes.io/tls-acme: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/enable-cors: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+    # for websockets we want a longer timeout, set to 2h now
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "7200"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "7200"
+    nginx.ingress.kubernetes.io/secure-backends: "true"
+    nginx.ingress.kubernetes.io/secure-verify-ca-secret: cluster-ca
+  paths:
+  - "/"
+  hosts:
+  - app.oneconcern.com
+  tls:
+  - secretName: app.oneconcern.com
+    hosts:
+    - app.oneconcern.com
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+nodeSelector: {"kubernetes.io/role":"platform"}
+tolerations: [{"key": "dedicated","operator": "Equal","value": "platform"}]
+
+affinity: {}
+
+extraVolumes: []
+extraVolumeMounts: []
+
+hostnames:
+- "app"
+application: gatekeeper
+
+caSecret: cluster-ca
+
+extraArgs: []
+
+config:
+  oidc:
+    # We have to call the real external endpoint to have proper configuration
+    # This is because the oidc lib (coreos/go-oidc@V1) checks that the returned issued matches the
+    # discoveryURL url => have to patch that in gatekeeper (TODO(fredbi))
+    # Parameters which depend on the keycloak auth server configuration
+    #discoveryURL: https://oauth2.default.svc.cluster.local:8443/auth/realms/oneconcern/.well-known/openid-configuration
+    discoveryURL: https://auth.oneconcern.com/auth/realms/oneconcern/.well-known/openid-configuration
+    clientID: gatekeeper
+  gatekeeper:
+    # Parameters specific to keycloak-gatekeeper
+    #
+    # Upstream route
+    upstreamURL: https://depmon:6632
+    port: 4455
+    adminPort: 4456
+  keys:
+    # Logging control
+    enable-logging: true
+    verbose: true
+    enable-json-logging: true
+    #
+    # Token checks
+    #
+    match-claims:
+      # verifies the issuer of the token (with FDQN)
+      iss: https://auth.oneconcern.com/auth/realms/oneconcern
+    # additional scopes to add to add to the default (openid+email+profile)
+    scopes: []
+    #
+    # CORS settings
+    #
+    # An array of origins (Access-Control-Allow-Origin)
+    # Add your app servers here if they are not behind proxy (e.g. app-react.{domain}:3000).
+    # Wildcard origins are supported.
+    cors-origins:
+    - 'https://*.oneconcern.com'
+    - 'https://*.auryc.com'
+    # an array of headers to apply (Access-Control-Allow-Headers)
+    cors-headers:
+    - '*'
+    # an array of exposed headers (Access-Control-Expose-Headers)
+    cors-exposed-headers:
+    - Accept
+    - Content-Type
+    - Location
+    - Strict-Transport-Security
+    - X-Csrf-Token
+    # an array of methods (Access-Control-Allow-Methods)
+    cors-methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - PATCH
+    cors-credentials: true
+    # lifespan of preflight CORS cache
+    cors-max-age: 1h
+    #
+    # RBAC rules on routes
+    #
+    resources:
+    # DEFAULT: DENY
+    - uri: /*
+    # API Service 1
+    - uri: /query*
+      # the methods on this url that should be protected, if missing, assuming all
+      methods:
+      - GET
+      - POST
+      - DELETE
+      roles:
+      - api_access
+      groups:
+      - group:oneconcern.com:users
+      enable-csrf: true
+    - uri: /playground*
+      methods:
+      - GET
+      - POST
+      - DELETE
+      roles:
+      - api_access
+      groups:
+      - group:oneconcern.com:admin
+      enable-csrf: true
