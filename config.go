@@ -527,8 +527,5 @@ func (r *Config) isTokenConfigValid() error {
 		return errors.New("the cookie is set to secure but your redirection url is non-tls")
 	}
 
-	if err := r.isStoreValid(); err != nil {
-		return err
-	}
-	return nil
+	return r.isStoreValid()
 }
