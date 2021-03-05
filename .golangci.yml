@@ -38,3 +38,6 @@ linters:
     - exhaustivestruct
     - wrapcheck
     - errorlint
+    - paralleltest
+    - thelper
+    - cyclop
